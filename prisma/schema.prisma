@@ -1,0 +1,72 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           Int             @id @default(autoincrement())
+  email        String          @unique
+  passwordHash String
+  role         String          @default("user")
+  createdAt    DateTime        @default(now())
+  profile      Profile?
+  solves       Solve[]
+  favorites    FavoriteAlgo[]
+  posts        CommunityPost[]
+  notifications Notification[]
+}
+
+model Profile {
+  id         Int      @id @default(autoincrement())
+  username   String   @unique
+  avatar     String   @default("👦")
+  country    String   @default("Global")
+  bio        String   @default("")
+  xp         Int      @default(0)
+  lvl        Int      @default(1)
+  coins      Int      @default(0)
+  streak     Int      @default(0)
+  lastActive DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     Int      @unique
+}
+
+model Solve {
+  id       Int      @id @default(autoincrement())
+  time     Float
+  scramble String
+  type     String   @default("3x3 Classic")
+  date     String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   Int
+}
+
+model FavoriteAlgo {
+  id       Int    @id @default(autoincrement())
+  algoName String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   Int
+}
+
+model CommunityPost {
+  id         Int      @id @default(autoincrement())
+  authorName String
+  text       String
+  likes      Int      @default(0)
+  bookmarks  Int      @default(0)
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     Int
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  message   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Solve Rubik's Cube with Ayu",
+  "short_name": "Ayu Solver",
+  "description": "Learn, scan, practice, and solve any Rubik's Cube with 3D models and Gemini AI coach.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050810",
+  "theme_color": "#06b6d4",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

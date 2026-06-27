@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solve Rubik Cube with Ayu</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+
+  :root {
+    --bg-deep: #050810;
+    --bg-navy: #080d1a;
+    --bg-mid: #0d1528;
+    --bg-surface: #111c35;
+    --bg-glass: rgba(13,21,40,0.6);
+    --accent-blue: #3b82f6;
+    --accent-cyan: #06b6d4;
+    --accent-purple: #8b5cf6;
+    --accent-green: #22c55e;
+    --accent-red: #ef4444;
+    --accent-yellow: #eab308;
+    --accent-orange: #f97316;
+    --text-primary: #f0f4ff;
+    --text-secondary: #8899bb;
+    --text-muted: #4a5a7a;
+    --border-glass: rgba(100,150,255,0.12);
+    --border-glow: rgba(59,130,246,0.3);
+    --font-display: 'Syne', sans-serif;
+    --font-body: 'Space Grotesk', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  /* ── Custom Cursor ── */
+  #cursor {
+    position: fixed; width: 12px; height: 12px;
+    background: var(--accent-cyan); border-radius: 50%;
+    pointer-events: none; z-index: 9999;
+    transform: translate(-50%,-50%);
+    transition: width .2s, height .2s, background .2s;
+    mix-blend-mode: screen;
+  }
+  #cursor-ring {
+    position: fixed; width: 36px; height: 36px;
+    border: 1.5px solid rgba(6,182,212,0.5); border-radius: 50%;
+    pointer-events: none; z-index: 9998;
+    transform: translate(-50%,-50%);
+    transition: transform .12s ease-out, width .2s, height .2s;
+  }
+
+  /* ── Background Canvas ── */
+  #bg-canvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
+  /* ── Gradient blobs ── */
+  .blob {
+    position: fixed; border-radius: 50%; filter: blur(120px);
+    pointer-events: none; z-index: 0; opacity: .18;
+    animation: blobDrift 20s ease-in-out infinite alternate;
+  }
+  .blob-1 { width: 600px; height: 600px; background: var(--accent-purple); top: -200px; left: -200px; animation-duration: 22s; }
+  .blob-2 { width: 500px; height: 500px; background: var(--accent-blue); top: 30%; right: -150px; animation-duration: 18s; animation-delay: -8s; }
+  .blob-3 { width: 400px; height: 400px; background: var(--accent-cyan); bottom: 10%; left: 20%; animation-duration: 25s; animation-delay: -5s; }
+  @keyframes blobDrift {
+    0% { transform: translate(0,0) scale(1); }
+    100% { transform: translate(40px,30px) scale(1.08); }
+  }
+
+  /* ── Noise texture overlay ── */
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    opacity: .4;
+  }
+
+  /* ── Layout Wrappers ── */
+  .container { max-width: 1200px; margin: 0 auto; padding: 0 2rem; position: relative; z-index: 2; }
+
+  /* ── Navbar ── */
+  nav {
+    position: fixed; top: 1.2rem; left: 50%; transform: translateX(-50%);
+    width: calc(100% - 3rem); max-width: 1200px;
+    background: rgba(8,13,26,0.65); backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid var(--border-glass);
+    border-radius: 16px;
+    padding: .8rem 1.5rem;
+    display: flex; align-items: center; justify-content: space-between;
+    z-index: 1000;
+    transition: all .3s ease;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(100,150,255,0.05);
+  }
+  nav.scrolled {
+    background: rgba(5,8,16,0.85);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6), 0 0 20px rgba(59,130,246,0.06);
+  }
+
+  .nav-logo {
+    display: flex; align-items: center; gap: .6rem;
+    text-decoration: none; flex-shrink: 0;
+  }
+  .logo-cube {
+    width: 34px; height: 34px; position: relative;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 4px;
+    background: linear-gradient(135deg, rgba(59,130,246,.2), rgba(139,92,246,.2));
+    border: 1px solid rgba(59,130,246,.3); border-radius: 8px;
+  }
+  .logo-cube span {
+    border-radius: 3px; display: block;
+    animation: logoPulse 3s ease-in-out infinite;
+  }
+  .logo-cube span:nth-child(1) { background: var(--accent-blue); animation-delay: 0s; }
+  .logo-cube span:nth-child(2) { background: var(--accent-red); animation-delay: .3s; }
+  .logo-cube span:nth-child(3) { background: var(--accent-yellow); animation-delay: .6s; }
+  .logo-cube span:nth-child(4) { background: var(--accent-green); animation-delay: .9s; }
+  @keyframes logoPulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+  .logo-text {
+    font-family: var(--font-display); font-weight: 700; font-size: .95rem;
+    background: linear-gradient(135deg, #f0f4ff, var(--accent-cyan));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    white-space: nowrap;
+  }
+
+  .nav-links {
+    display: flex; gap: .2rem; list-style: none;
+  }
+  .nav-links a {
+    text-decoration: none; color: var(--text-secondary);
+    font-size: .82rem; font-weight: 500; padding: .4rem .75rem; border-radius: 8px;
+    transition: all .25s; position: relative; letter-spacing: .01em;
+  }
+  .nav-links a::after {
+    content: ''; position: absolute; bottom: 2px; left: 50%; right: 50%;
+    height: 1px; background: var(--accent-cyan);
+    transition: left .25s, right .25s;
+    box-shadow: 0 0 6px var(--accent-cyan);
+  }
+  .nav-links a:hover { color: var(--text-primary); }
+  .nav-links a:hover::after { left: 12px; right: 12px; }
+
+  .nav-right { display: flex; align-items: center; gap: .75rem; }
+  .btn-login {
+    background: transparent; border: 1px solid var(--border-glow);
+    color: var(--text-primary); padding: .45rem 1.1rem; border-radius: 10px;
+    font-family: var(--font-body); font-size: .82rem; font-weight: 500;
+    cursor: none; transition: all .25s;
+  }
+  .btn-login:hover {
+    background: rgba(59,130,246,.1); border-color: var(--accent-blue);
+    box-shadow: 0 0 16px rgba(59,130,246,.2);
+  }
+  .theme-btn {
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border-glass);
+    background: transparent; color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center;
+    cursor: none; transition: all .25s; font-size: 1rem;
+  }
+  .theme-btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+
+  /* ── Hero Section ── */
+  #hero {
+    min-height: 100vh; display: flex; align-items: center;
+    padding: 7rem 0 4rem;
+    position: relative; overflow: hidden;
+  }
+  .hero-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 3rem; align-items: center; width: 100%;
+  }
+  .hero-eyebrow {
+    display: inline-flex; align-items: center; gap: .5rem;
+    background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.2);
+    padding: .35rem 1rem; border-radius: 100px; margin-bottom: 1.5rem;
+    font-size: .78rem; font-family: var(--font-mono); color: var(--accent-cyan);
+    letter-spacing: .05em;
+  }
+  .eyebrow-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent-cyan);
+    animation: pulse 2s ease-in-out infinite;
+    box-shadow: 0 0 8px var(--accent-cyan);
+  }
+  @keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.4);opacity:.6} }
+
+  .hero-title {
+    font-family: var(--font-display); font-size: clamp(2.6rem, 5vw, 4.2rem);
+    font-weight: 800; line-height: 1.08; letter-spacing: -.02em;
+    margin-bottom: 1.4rem;
+  }
+  .hero-title .line-1 { display: block; color: var(--text-primary); }
+  .hero-title .line-2 {
+    display: block;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan), var(--accent-purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-size: 200%;
+    animation: gradShift 4s ease infinite alternate;
+  }
+  @keyframes gradShift { 0%{background-position:0%} 100%{background-position:100%} }
+
+  .hero-sub {
+    font-size: 1.1rem; color: var(--text-secondary); line-height: 1.7;
+    margin-bottom: 2.2rem; max-width: 480px;
+  }
+  .hero-sub strong { color: var(--text-primary); }
+
+  .hero-pills {
+    display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 2rem;
+  }
+  .pill {
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+    padding: .3rem .8rem; border-radius: 100px; font-size: .78rem;
+    color: var(--text-secondary); font-family: var(--font-mono);
+    transition: all .25s;
+  }
+  .pill:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+
+  .hero-btns { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2.5rem; }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    color: white; padding: .85rem 2rem; border-radius: 12px; border: none;
+    font-family: var(--font-body); font-size: .95rem; font-weight: 600;
+    cursor: none; position: relative; overflow: hidden;
+    transition: all .3s; letter-spacing: .01em;
+    box-shadow: 0 4px 24px rgba(59,130,246,.35);
+  }
+  .btn-primary::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, transparent, rgba(255,255,255,.15), transparent);
+    transform: translateX(-100%); transition: transform .5s;
+  }
+  .btn-primary:hover::before { transform: translateX(100%); }
+  .btn-primary:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 8px 32px rgba(59,130,246,.5), 0 0 40px rgba(139,92,246,.2);
+  }
+
+  .btn-secondary {
+    background: transparent; color: var(--text-primary);
+    padding: .85rem 2rem; border-radius: 12px;
+    border: 1px solid var(--border-glass); font-family: var(--font-body);
+    font-size: .95rem; font-weight: 500; cursor: none;
+    transition: all .3s; backdrop-filter: blur(8px);
+  }
+  .btn-secondary:hover {
+    border-color: rgba(6,182,212,.4); background: rgba(6,182,212,.06);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(6,182,212,.15);
+  }
+
+  .hero-stats {
+    display: flex; gap: 2rem; flex-wrap: wrap;
+  }
+  .stat { display: flex; flex-direction: column; gap: .2rem; }
+  .stat-num {
+    font-family: var(--font-display); font-size: 1.6rem; font-weight: 800;
+    background: linear-gradient(135deg, #fff, var(--accent-cyan));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .stat-label { font-size: .75rem; color: var(--text-muted); font-family: var(--font-mono); letter-spacing: .05em; }
+
+  /* ── 3D Cube Canvas ── */
+  .hero-cube-wrap {
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  #cube-canvas {
+    width: 100%; max-width: 500px; aspect-ratio: 1;
+    border-radius: 24px; cursor: none;
+  }
+  .cube-glow {
+    position: absolute; inset: 20%; border-radius: 50%;
+    background: radial-gradient(circle, rgba(59,130,246,.2) 0%, transparent 70%);
+    animation: cubeGlow 3s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+  @keyframes cubeGlow { 0%{opacity:.4;transform:scale(.9)} 100%{opacity:.8;transform:scale(1.1)} }
+
+  /* ── Section Commons ── */
+  section { padding: 7rem 0; position: relative; z-index: 2; }
+  .section-label {
+    font-family: var(--font-mono); font-size: .75rem; letter-spacing: .15em;
+    color: var(--accent-cyan); text-transform: uppercase; margin-bottom: .75rem;
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .section-label::before { content: '//'; opacity: .5; }
+  .section-title {
+    font-family: var(--font-display); font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+    font-weight: 800; line-height: 1.15; letter-spacing: -.02em;
+    margin-bottom: 1rem;
+  }
+  .section-sub { color: var(--text-secondary); font-size: 1.05rem; line-height: 1.7; max-width: 560px; }
+
+  /* ── Divider ── */
+  .divider {
+    height: 1px; background: linear-gradient(90deg, transparent, var(--border-glass), transparent);
+    margin: 0 auto;
+  }
+
+  /* ── Features ── */
+  #features { background: linear-gradient(to bottom, transparent, rgba(59,130,246,.03), transparent); }
+  .features-header { text-align: center; margin-bottom: 4rem; }
+  .features-header .section-label { justify-content: center; }
+  .features-header .section-sub { margin: 0 auto; }
+
+  .features-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+  }
+  .feature-card {
+    background: var(--bg-glass); backdrop-filter: blur(20px);
+    border: 1px solid var(--border-glass); border-radius: 20px;
+    padding: 2rem; position: relative; overflow: hidden;
+    transition: all .35s cubic-bezier(.23,1,.32,1);
+    cursor: default;
+  }
+  .feature-card::before {
+    content: ''; position: absolute; inset: 0; border-radius: 20px;
+    background: linear-gradient(135deg, transparent, rgba(255,255,255,.02));
+    opacity: 0; transition: opacity .35s;
+  }
+  .feature-card:hover { transform: translateY(-6px); border-color: var(--border-glow); }
+  .feature-card:hover::before { opacity: 1; }
+  .feature-card:hover { box-shadow: 0 20px 60px rgba(0,0,0,.5), 0 0 40px rgba(59,130,246,.1); }
+
+  .feature-icon-wrap {
+    width: 52px; height: 52px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; margin-bottom: 1.25rem;
+    position: relative;
+  }
+  .feature-icon-wrap::after {
+    content: ''; position: absolute; inset: -1px; border-radius: 15px;
+    background: linear-gradient(135deg, var(--icon-a), var(--icon-b));
+    z-index: -1; opacity: .3;
+  }
+
+  .fi-1 { --icon-a: #3b82f6; --icon-b: #8b5cf6; background: rgba(59,130,246,.1); }
+  .fi-2 { --icon-a: #06b6d4; --icon-b: #3b82f6; background: rgba(6,182,212,.1); }
+  .fi-3 { --icon-a: #22c55e; --icon-b: #06b6d4; background: rgba(34,197,94,.1); }
+  .fi-4 { --icon-a: #f97316; --icon-b: #ef4444; background: rgba(249,115,22,.1); }
+  .fi-5 { --icon-a: #8b5cf6; --icon-b: #ec4899; background: rgba(139,92,246,.1); }
+  .fi-6 { --icon-a: #eab308; --icon-b: #f97316; background: rgba(234,179,8,.1); }
+
+  .feature-title {
+    font-family: var(--font-display); font-size: 1.1rem; font-weight: 700;
+    margin-bottom: .6rem; color: var(--text-primary);
+  }
+  .feature-desc { font-size: .88rem; color: var(--text-secondary); line-height: 1.65; }
+
+  /* gradient border top accent */
+  .feature-card::after {
+    content: ''; position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--icon-a, var(--accent-blue)), transparent);
+    opacity: 0; transition: opacity .35s;
+  }
+  .feature-card:hover::after { opacity: 1; }
+
+  /* ── Cube Categories ── */
+  #cubes { }
+  .cubes-intro { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 3rem; flex-wrap: wrap; gap: 1rem; }
+  .cubes-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.2rem;
+  }
+  .cube-card {
+    background: var(--bg-glass); backdrop-filter: blur(16px);
+    border: 1px solid var(--border-glass); border-radius: 18px;
+    padding: 1.5rem 1.2rem; text-align: center;
+    transition: all .35s cubic-bezier(.23,1,.32,1); cursor: default;
+    position: relative; overflow: hidden;
+  }
+  .cube-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    border-color: var(--card-color, var(--accent-blue));
+    box-shadow: 0 16px 48px rgba(0,0,0,.4), 0 0 30px rgba(var(--card-rgb, 59,130,246),.15);
+  }
+  .cube-3d {
+    width: 80px; height: 80px; margin: 0 auto 1rem;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.6rem;
+    animation: floatCube 4s ease-in-out infinite;
+  }
+  .cube-card:hover .cube-3d { animation: floatCubeFast .6s ease-in-out infinite alternate; }
+  @keyframes floatCube { 0%,100%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-6px) rotate(5deg)} }
+  @keyframes floatCubeFast { 0%{transform:translateY(0) rotate(-5deg)} 100%{transform:translateY(-8px) rotate(5deg)} }
+  .cube-name { font-family: var(--font-display); font-weight: 700; font-size: 1rem; margin-bottom: .3rem; }
+  .cube-desc { font-size: .78rem; color: var(--text-secondary); margin-bottom: .75rem; }
+  .difficulty {
+    display: inline-flex; gap: 3px;
+  }
+  .diff-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+  .diff-dot.active { background: var(--card-color, var(--accent-blue)); box-shadow: 0 0 6px var(--card-color, var(--accent-blue)); }
+
+  /* ── Journey Timeline ── */
+  #journey { background: linear-gradient(to bottom, transparent, rgba(139,92,246,.04), transparent); }
+  .journey-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 5rem; align-items: center; }
+  .journey-title { font-family: var(--font-display); font-size: 2.4rem; font-weight: 800; line-height: 1.15; margin-bottom: 1rem; }
+  .journey-sub { color: var(--text-secondary); line-height: 1.7; margin-bottom: 2rem; }
+
+  .timeline { position: relative; padding-left: 2.5rem; }
+  .timeline::before {
+    content: ''; position: absolute; left: 11px; top: 0; bottom: 0; width: 2px;
+    background: linear-gradient(to bottom, var(--accent-blue), var(--accent-purple), var(--accent-cyan));
+    border-radius: 2px;
+  }
+  .tl-step {
+    position: relative; margin-bottom: 1.6rem;
+    opacity: 0; transform: translateX(-20px);
+    transition: all .5s ease;
+  }
+  .tl-step.visible { opacity: 1; transform: translateX(0); }
+  .tl-dot {
+    position: absolute; left: -2.5rem; top: .3rem;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--bg-mid); border: 2px solid var(--accent-blue);
+    display: flex; align-items: center; justify-content: center;
+    font-size: .65rem; font-weight: 700; color: var(--accent-cyan);
+    font-family: var(--font-mono);
+  }
+  .tl-step:nth-child(2) .tl-dot { border-color: var(--accent-purple); color: var(--accent-purple); }
+  .tl-step:nth-child(3) .tl-dot { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+  .tl-step:nth-child(4) .tl-dot { border-color: var(--accent-green); color: var(--accent-green); }
+  .tl-step:nth-child(5) .tl-dot { border-color: var(--accent-orange); color: var(--accent-orange); }
+  .tl-step:nth-child(6) .tl-dot { border-color: var(--accent-yellow); color: var(--accent-yellow); }
+  .tl-title { font-weight: 600; margin-bottom: .2rem; font-size: .95rem; }
+  .tl-desc { font-size: .82rem; color: var(--text-secondary); }
+
+  /* Journey right: visual */
+  .journey-visual {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    aspect-ratio: 1; max-width: 400px;
+  }
+  .jv-ring {
+    position: absolute; border-radius: 50%; border-style: solid; border-color: transparent;
+    animation: ringRotate linear infinite;
+  }
+  .jv-r1 { inset: 0; border-width: 1px; border-top-color: rgba(59,130,246,.3); animation-duration: 8s; }
+  .jv-r2 { inset: 15%; border-width: 1px; border-right-color: rgba(139,92,246,.3); animation-duration: 12s; animation-direction: reverse; }
+  .jv-r3 { inset: 30%; border-width: 1px; border-bottom-color: rgba(6,182,212,.3); animation-duration: 6s; }
+  @keyframes ringRotate { to { transform: rotate(360deg); } }
+  .jv-center {
+    width: 120px; height: 120px; border-radius: 20px;
+    background: linear-gradient(135deg, var(--bg-surface), var(--bg-mid));
+    border: 1px solid var(--border-glass);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 3.5rem;
+    box-shadow: 0 0 60px rgba(59,130,246,.15), 0 0 120px rgba(139,92,246,.08);
+    animation: floatCube 5s ease-in-out infinite;
+  }
+
+  /* ── Stats ── */
+  #stats {
+    background: linear-gradient(135deg, rgba(59,130,246,.05), rgba(139,92,246,.05));
+    border-top: 1px solid var(--border-glass); border-bottom: 1px solid var(--border-glass);
+    padding: 5rem 0;
+  }
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(4,1fr); gap: 1px;
+  }
+  .stat-card {
+    text-align: center; padding: 2.5rem 1.5rem;
+    border-right: 1px solid var(--border-glass);
+    position: relative;
+  }
+  .stat-card:last-child { border-right: none; }
+  .stat-icon { font-size: 1.6rem; margin-bottom: .75rem; }
+  .stat-big {
+    font-family: var(--font-display); font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 800; line-height: 1;
+    background: linear-gradient(135deg, var(--text-primary), var(--accent-cyan));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: .4rem;
+  }
+  .stat-card-label { font-size: .82rem; color: var(--text-secondary); font-family: var(--font-mono); letter-spacing: .04em; }
+
+  /* ── Testimonials ── */
+  #testimonials { }
+  .testi-header { text-align: center; margin-bottom: 3rem; }
+  .testi-header .section-label { justify-content: center; }
+  .testi-track-wrap { overflow: hidden; position: relative; }
+  .testi-track-wrap::before,
+  .testi-track-wrap::after {
+    content: ''; position: absolute; top: 0; bottom: 0; width: 100px; z-index: 3;
+    pointer-events: none;
+  }
+  .testi-track-wrap::before { left: 0; background: linear-gradient(to right, var(--bg-deep), transparent); }
+  .testi-track-wrap::after { right: 0; background: linear-gradient(to left, var(--bg-deep), transparent); }
+  .testi-track {
+    display: flex; gap: 1.5rem;
+    animation: scrollTrack 40s linear infinite;
+    width: max-content;
+  }
+  .testi-track:hover { animation-play-state: paused; }
+  @keyframes scrollTrack { to { transform: translateX(-50%); } }
+  .testi-card {
+    background: var(--bg-glass); backdrop-filter: blur(16px);
+    border: 1px solid var(--border-glass); border-radius: 18px;
+    padding: 1.6rem; width: 320px; flex-shrink: 0;
+  }
+  .testi-top { display: flex; align-items: center; gap: .9rem; margin-bottom: 1rem; }
+  .testi-avatar {
+    width: 44px; height: 44px; border-radius: 12px; font-size: 1.5rem;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, var(--bg-surface), var(--bg-mid));
+    border: 1px solid var(--border-glass); flex-shrink: 0;
+  }
+  .testi-name { font-weight: 600; font-size: .9rem; }
+  .testi-role { font-size: .75rem; color: var(--text-muted); font-family: var(--font-mono); }
+  .testi-stars { color: var(--accent-yellow); font-size: .85rem; margin-bottom: .75rem; }
+  .testi-text { font-size: .85rem; color: var(--text-secondary); line-height: 1.65; }
+
+  /* ── CTA ── */
+  #cta {
+    padding: 8rem 0; text-align: center; position: relative; overflow: hidden;
+  }
+  #cta::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% 50%, rgba(59,130,246,.08), transparent);
+  }
+  .cta-title {
+    font-family: var(--font-display); font-size: clamp(2rem, 4vw, 3.2rem);
+    font-weight: 800; margin-bottom: 1rem; letter-spacing: -.02em;
+  }
+  .cta-sub { color: var(--text-secondary); font-size: 1.05rem; margin-bottom: 2.5rem; }
+  .cta-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+  /* ── Footer ── */
+  footer {
+    border-top: 1px solid var(--border-glass);
+    padding: 3rem 0 2rem; position: relative; z-index: 2;
+  }
+  .footer-inner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+  .footer-logo { font-family: var(--font-display); font-weight: 700; font-size: .9rem; color: var(--text-muted); }
+  .footer-links { display: flex; gap: 1.5rem; }
+  .footer-links a { font-size: .8rem; color: var(--text-muted); text-decoration: none; transition: color .2s; }
+  .footer-links a:hover { color: var(--accent-cyan); }
+  .footer-copy { font-size: .75rem; color: var(--text-muted); font-family: var(--font-mono); }
+
+  /* ── Hamburger ── */
+  .hamburger {
+    display: none; width: 34px; height: 34px; flex-direction: column;
+    justify-content: center; gap: 5px; cursor: none; background: none; border: none; padding: 4px;
+  }
+  .hamburger span { display: block; height: 2px; background: var(--text-secondary); border-radius: 2px; transition: all .3s; }
+  .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+  .hamburger.open span:nth-child(2) { opacity: 0; }
+  .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+  .mobile-menu {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(5,8,16,.97); backdrop-filter: blur(24px);
+    z-index: 999; flex-direction: column; align-items: center; justify-content: center;
+    gap: 1.5rem;
+  }
+  .mobile-menu.open { display: flex; }
+  .mobile-menu a {
+    font-family: var(--font-display); font-size: 1.8rem; font-weight: 700;
+    color: var(--text-secondary); text-decoration: none; transition: color .25s;
+  }
+  .mobile-menu a:hover { color: var(--accent-cyan); }
+
+  /* ── Scroll-reveal ── */
+  .reveal {
+    opacity: 0; transform: translateY(30px);
+    transition: opacity .6s ease, transform .6s ease;
+  }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+  .reveal-l { opacity: 0; transform: translateX(-30px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal-l.visible { opacity: 1; transform: translateX(0); }
+  .reveal-r { opacity: 0; transform: translateX(30px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal-r.visible { opacity: 1; transform: translateX(0); }
+
+  /* ── Responsive ── */
+  @media (max-width: 1024px) {
+    .features-grid { grid-template-columns: repeat(2,1fr); }
+    .cubes-grid { grid-template-columns: repeat(4,1fr); }
+    .stats-grid { grid-template-columns: repeat(2,1fr); }
+    .stat-card:nth-child(2) { border-right: none; }
+    .stat-card:nth-child(3) { border-right: 1px solid var(--border-glass); }
+    .stat-card:nth-child(3), .stat-card:nth-child(4) { border-top: 1px solid var(--border-glass); }
+  }
+  @media (max-width: 768px) {
+    .nav-links, .nav-right { display: none; }
+    .hamburger { display: flex; }
+    nav { padding: .7rem 1.2rem; }
+    .hero-grid { grid-template-columns: 1fr; gap: 2rem; }
+    .hero-cube-wrap { max-width: 300px; margin: 0 auto; }
+    .features-grid { grid-template-columns: 1fr; }
+    .cubes-grid { grid-template-columns: repeat(2,1fr); }
+    .journey-inner { grid-template-columns: 1fr; gap: 3rem; }
+    .journey-visual { display: none; }
+    .stats-grid { grid-template-columns: repeat(2,1fr); }
+    .hero-stats { gap: 1.2rem; }
+    section { padding: 4rem 0; }
+    .hero-title { font-size: 2.2rem; }
+  }
+  @media (max-width: 480px) {
+    .cubes-grid { grid-template-columns: repeat(2,1fr); }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- Custom Cursor -->
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
+<!-- Background Blobs -->
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+
+<!-- Particle Canvas -->
+<canvas id="bg-canvas"></canvas>
+
+<!-- Landing View Wrapper -->
+<div id="landing-view">
+
+<!-- Mobile Menu -->
+<div class="mobile-menu" id="mobileMenu">
+  <a href="#" onclick="closeMobile(); goToPage('home')">Home</a>
+  <a href="#/solver" onclick="closeMobile(); goToPage('solver')">Solver</a>
+  <a href="#/learn" onclick="closeMobile(); goToPage('learn')">Learn</a>
+  <a href="#/cubes" onclick="closeMobile(); goToPage('cubes')">Cube Types</a>
+  <a href="#/timer" onclick="closeMobile(); goToPage('timer')">Timer</a>
+  <a href="#/community" onclick="closeMobile(); goToPage('community')">Community</a>
+</div>
+
+<!-- Navbar -->
+<nav id="navbar">
+  <a href="#" class="nav-logo" onclick="goToPage('home')">
+    <div class="logo-cube">
+      <span></span><span></span><span></span><span></span>
+    </div>
+    <span class="logo-text">Solve with Ayu</span>
+  </a>
+
+  <ul class="nav-links">
+    <li><a href="#" onclick="goToPage('home')">Home</a></li>
+    <li><a href="#/solver" onclick="goToPage('solver')">Solver</a></li>
+    <li><a href="#/learn" onclick="goToPage('learn')">Learn</a></li>
+    <li><a href="#/algorithms" onclick="goToPage('algorithms')">Algorithms</a></li>
+    <li><a href="#/cubes" onclick="goToPage('cubes')">Cube Types</a></li>
+    <li><a href="#/timer" onclick="goToPage('timer')">Timer</a></li>
+    <li><a href="#/community" onclick="goToPage('community')">Community</a></li>
+  </ul>
+
+  <div class="nav-right">
+    <button class="theme-btn" title="Toggle theme">🌙</button>
+    <button class="btn-login" onclick="goToPage('dashboard')">Login</button>
+    <button class="hamburger" id="hamburger" onclick="toggleMobile()">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- ═══ HERO ═══ -->
+<section id="hero">
+  <div class="container">
+    <div class="hero-grid">
+      <div class="hero-content">
+        <div class="hero-eyebrow">
+          <span class="eyebrow-dot"></span>
+          Now with AI-powered cube scanning
+        </div>
+
+        <h1 class="hero-title">
+          <span class="line-1">Solve Any Cube.</span>
+          <span class="line-2">Master Every Move.</span>
+        </h1>
+
+        <p class="hero-sub">
+          The most advanced Rubik's Cube platform ever built. <strong>Learn, practice, scan, and solve</strong> with interactive 3D models, AI algorithms, and a global community of cubers.
+        </p>
+
+        <div class="hero-pills">
+          <span class="pill">✦ Learn CFOP</span>
+          <span class="pill">✦ Speed Training</span>
+          <span class="pill">✦ AI Scanner</span>
+          <span class="pill">✦ 12+ Cube Types</span>
+        </div>
+
+        <div class="hero-btns">
+          <button class="btn-primary" onclick="goToPage('solver')">🚀 Start Solving</button>
+          <button class="btn-secondary" onclick="goToPage('learn')">📚 Explore Tutorials</button>
+        </div>
+
+        <div class="hero-stats">
+          <div class="stat">
+            <span class="stat-num" data-target="120000">0</span>
+            <span class="stat-label">Active Solvers</span>
+          </div>
+          <div class="stat">
+            <span class="stat-num" data-target="98">0</span>
+            <span class="stat-label">% Success Rate</span>
+          </div>
+          <div class="stat">
+            <span class="stat-num" data-target="12">0</span>
+            <span class="stat-label">Cube Types</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-cube-wrap">
+        <div class="cube-glow"></div>
+        <canvas id="cube-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider container" style="margin-bottom:0"></div>
+
+<!-- ═══ FEATURES ═══ -->
+<section id="features">
+  <div class="container">
+    <div class="features-header reveal">
+      <div class="section-label">What we offer</div>
+      <h2 class="section-title">Everything you need to<br>become a cubing expert</h2>
+      <p class="section-sub">From your very first solve to sub-10 second speedcubing — Ayu has the tools, tutorials, and training to get you there.</p>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature-card reveal" style="transition-delay:.05s;--icon-a:#3b82f6;--icon-b:#8b5cf6">
+        <div class="feature-icon-wrap fi-1">🧠</div>
+        <div class="feature-title">AI Cube Solver</div>
+        <div class="feature-desc">Input any scramble and watch our AI compute the optimal solution step-by-step, with explanations for every move.</div>
+      </div>
+      <div class="feature-card reveal" style="transition-delay:.1s;--icon-a:#06b6d4;--icon-b:#3b82f6">
+        <div class="feature-icon-wrap fi-2">📷</div>
+        <div class="feature-title">Camera Scanner</div>
+        <div class="feature-desc">Point your camera at any scrambled cube — Ayu detects all 54 stickers instantly and generates a solution in seconds.</div>
+      </div>
+      <div class="feature-card reveal" style="transition-delay:.15s;--icon-a:#22c55e;--icon-b:#06b6d4">
+        <div class="feature-icon-wrap fi-3">📚</div>
+        <div class="feature-title">Interactive Tutorials</div>
+        <div class="feature-desc">Step-by-step 3D animated guides from beginner layer-by-layer all the way through advanced CFOP and Roux methods.</div>
+      </div>
+      <div class="feature-card reveal" style="transition-delay:.2s;--icon-a:#f97316;--icon-b:#ef4444">
+        <div class="feature-icon-wrap fi-4">⚡</div>
+        <div class="feature-title">Speedcubing Practice</div>
+        <div class="feature-desc">Built-in inspection timer, WCA scramble generator, session tracking, and PB notifications to fuel your improvement.</div>
+      </div>
+      <div class="feature-card reveal" style="transition-delay:.25s;--icon-a:#8b5cf6;--icon-b:#ec4899">
+        <div class="feature-icon-wrap fi-5">🔬</div>
+        <div class="feature-title">Algorithm Trainer</div>
+        <div class="feature-desc">Drill OLL, PLL, F2L, ZBLL and more with spaced-repetition flashcards and real-time 3D execution feedback.</div>
+      </div>
+      <div class="feature-card reveal" style="transition-delay:.3s;--icon-a:#eab308;--icon-b:#f97316">
+        <div class="feature-icon-wrap fi-6">🏆</div>
+        <div class="feature-title">Daily Challenges</div>
+        <div class="feature-desc">Fresh scrambles and puzzle challenges every 24 hours. Compete on global leaderboards and earn achievement badges.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ CUBE CATEGORIES ═══ -->
+<section id="cubes">
+  <div class="container">
+    <div class="cubes-intro">
+      <div class="reveal-l">
+        <div class="section-label">Cube Library</div>
+        <h2 class="section-title">Every puzzle.<br>Perfectly taught.</h2>
+      </div>
+      <div class="reveal-r">
+        <button class="btn-secondary">View all cubes →</button>
+      </div>
+    </div>
+
+    <div class="cubes-grid">
+      <div class="cube-card reveal" style="--card-color:#3b82f6;--card-rgb:59,130,246">
+        <div class="cube-3d">🟦</div>
+        <div class="cube-name">2×2 Pocket</div>
+        <div class="cube-desc">Perfect starting point</div>
+        <div class="difficulty">
+          <span class="diff-dot active"></span><span class="diff-dot"></span><span class="diff-dot"></span><span class="diff-dot"></span><span class="diff-dot"></span>
+        </div>
+      </div>
+      <div class="cube-card reveal" style="transition-delay:.06s;--card-color:#22c55e;--card-rgb:34,197,94">
+        <div class="cube-3d">🟩</div>
+        <div class="cube-name">3×3 Classic</div>
+        <div class="cube-desc">The iconic original</div>
+        <div class="difficulty">
+          <span class="diff-dot active"></span><span class="diff-dot active"></span><span class="diff-dot"></span><span class="diff-dot"></span><span class="diff-dot"></span>
+        </div>
+      </div>
+      <div class="cube-card reveal" style="transition-delay:.12s;--card-color:#f97316;--card-rgb:249,115,22">
+        <div class="cube-3d">🟧</div>
+        <div class="cube-name">4×4 Revenge</div>
+        <div class="cube-desc">Next-level challenge</div>
+        <div class="difficulty">
+          <span class="diff-dot active"></span><span class="diff-dot active"></span><span class="diff-dot active"></span><span class="diff-dot"></span><span class="diff-dot"></span>
+        </div>
+      </div>
+      <div class="cube-card reveal" style="transition-delay:.18s;--card-color:#ef4444;--card-rgb:239,68,68">
+        <div class="cube-3d">🟥</div>
+        <div class="cube-name">5×5 Professor</div>
+        <div class="cube-desc">For the dedicated</div>
+        <div class="difficulty">
+          <span class="diff-dot active"></span><span class="diff-dot active"></span><span class="diff-dot active"></span><span class="diff-dot active"></span><span class="diff-dot"></span>
+        </div>
+      </div>
+      <div class="cube-card reveal" style="transition-delay:.24s;--card-color:#eab308;--card-rgb:234,179,8">
+        <div class="cube-3d">🔺</div>
+        <div class="cube-name">Pyraminx</div>
+        <div class="cube-desc">Triangular twists</div>
+        <div class="difficulty">
+          <span class="diff-dot active"></span><span class="diff-dot"></span><span class="diff-dot"></span><span class="diff-dot"></span><span class="diff-dot"></span>
+        </div>
+      </div>
+      <div class="cube-card reveal" style="transition-delay:.3s;--card-color:#8b5cf6;--card-rgb:139,92,246">
+        <div class="cube-3d">⬡</div>
+        <div class="cube-name">Megaminx</div>
+        <div class="cube-desc">12-sided madness</div>
+        <div class="difficulty">
+          <span class="diff-dot active"></span><span class="diff-dot active"></span><span class="diff-dot active"></span><span class="diff-dot"></span><span class="diff-dot"></span>
+        </div>
+      </div>
+      <div class="cube-card reveal" style="transition-delay:.36s;--card-color:#06b6d4;--card-rgb:6,182,212">
+        <div class="cube-3d">◆</div>
+        <div class="cube-name">Skewb</div>
+        <div class="cube-desc">Corner-turning fun</div>
+        <div class="difficulty">
+          <span class="diff-dot active"></span><span class="diff-dot active"></span><span class="diff-dot"></span><span class="diff-dot"></span><span class="diff-dot"></span>
+        </div>
+      </div>
+      <div class="cube-card reveal" style="transition-delay:.42s;--card-color:#ec4899;--card-rgb:236,72,153">
+        <div class="cube-3d">🪞</div>
+        <div class="cube-name">Mirror Cube</div>
+        <div class="cube-desc">Solve by shape</div>
+        <div class="difficulty">
+          <span class="diff-dot active"></span><span class="diff-dot active"></span><span class="diff-dot active"></span><span class="diff-dot active"></span><span class="diff-dot"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ JOURNEY TIMELINE ═══ -->
+<section id="journey">
+  <div class="container">
+    <div class="journey-inner">
+      <div>
+        <div class="section-label">Learning path</div>
+        <h2 class="journey-title reveal-l">Your path from<br><span style="background:linear-gradient(135deg,var(--accent-cyan),var(--accent-purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent">scrambled to mastery</span></h2>
+        <p class="journey-sub reveal-l">Follow a structured curriculum built by speedcubing champions. Each milestone unlocks the next, keeping you challenged and motivated.</p>
+
+        <div class="timeline">
+          <div class="tl-step">
+            <div class="tl-dot">01</div>
+            <div class="tl-title">Beginner Foundations</div>
+            <div class="tl-desc">Understand notation, colors, and cube anatomy. Solve your first layer intuitively.</div>
+          </div>
+          <div class="tl-step">
+            <div class="tl-dot">02</div>
+            <div class="tl-title">First Two Layers (F2L)</div>
+            <div class="tl-desc">Learn to pair and insert corner-edge pairs efficiently into the first two layers.</div>
+          </div>
+          <div class="tl-step">
+            <div class="tl-dot">03</div>
+            <div class="tl-title">Orient Last Layer (OLL)</div>
+            <div class="tl-desc">Master all 57 OLL algorithms to orient every piece on the top face in one look.</div>
+          </div>
+          <div class="tl-step">
+            <div class="tl-dot">04</div>
+            <div class="tl-title">Permute Last Layer (PLL)</div>
+            <div class="tl-desc">Execute 21 PLL algorithms to finish the cube in a single efficient last step.</div>
+          </div>
+          <div class="tl-step">
+            <div class="tl-dot">05</div>
+            <div class="tl-title">Advanced CFOP</div>
+            <div class="tl-desc">Refine look-ahead, full OLL/PLL recognition, advanced F2L, and ergonomic turning.</div>
+          </div>
+          <div class="tl-step">
+            <div class="tl-dot">06</div>
+            <div class="tl-title">Speedcubing Master</div>
+            <div class="tl-desc">Sub-30, sub-20, sub-10… break your own records and compete on the world stage.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="journey-visual reveal-r">
+        <div class="jv-ring jv-r1"></div>
+        <div class="jv-ring jv-r2"></div>
+        <div class="jv-ring jv-r3"></div>
+        <div class="jv-center">🧊</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ STATS ═══ -->
+<section id="stats">
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat-card reveal">
+        <div class="stat-icon">🧩</div>
+        <div class="stat-big" data-target="2400000">0</div>
+        <div class="stat-card-label">Cubes Solved</div>
+      </div>
+      <div class="stat-card reveal" style="transition-delay:.1s">
+        <div class="stat-icon">📐</div>
+        <div class="stat-big" data-target="500">0</div>
+        <div class="stat-card-label">Algorithms Available</div>
+      </div>
+      <div class="stat-card reveal" style="transition-delay:.2s">
+        <div class="stat-icon">📖</div>
+        <div class="stat-big" data-target="240">0</div>
+        <div class="stat-card-label">Learning Guides</div>
+      </div>
+      <div class="stat-card reveal" style="transition-delay:.3s">
+        <div class="stat-icon">🌍</div>
+        <div class="stat-big" data-target="120000">0</div>
+        <div class="stat-card-label">Community Members</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ TESTIMONIALS ═══ -->
+<section id="testimonials">
+  <div class="container">
+    <div class="testi-header reveal">
+      <div class="section-label">Community love</div>
+      <h2 class="section-title">Cubers around the world<br>trust Ayu</h2>
+    </div>
+  </div>
+  <div class="testi-track-wrap">
+    <div class="testi-track" id="testiTrack">
+      <!-- Cards duplicated for infinite scroll -->
+    </div>
+  </div>
+</section>
+
+<!-- ═══ CTA ═══ -->
+<section id="cta">
+  <div class="container">
+    <div class="section-label" style="justify-content:center">Start today</div>
+    <h2 class="cta-title reveal">Ready to finally solve it?</h2>
+    <p class="cta-sub reveal">Join 120,000+ cubers mastering every puzzle with Ayu's guided system.</p>
+    <div class="cta-btns reveal">
+      <button class="btn-primary" style="font-size:1rem;padding:1rem 2.5rem" onclick="goToPage('solver')">🚀 Start Solving — It's Free</button>
+      <button class="btn-secondary" style="font-size:1rem;padding:1rem 2.5rem" onclick="goToPage('learn')">Watch Demo</button>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-logo">Solve Rubik Cube with Ayu © 2025</div>
+      <div class="footer-links">
+        <a href="#">Privacy</a>
+        <a href="#">Terms</a>
+        <a href="#">Blog</a>
+        <a href="#">Contact</a>
+        <a href="#">Discord</a>
+      </div>
+      <div class="footer-copy">Built with ♥ for cubers</div>
+    </div>
+  </div>
+</footer>
+</div>
+
+<!-- App Dashboard View (SPA Shell) -->
+<div id="app-view" style="display:none">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-brand" onclick="goToPage('home')">
+      <div class="logo-cube"><span></span><span></span><span></span><span></span></div>
+      <span class="logo-text">Solve with Ayu</span>
+    </div>
+    
+    <div class="sidebar-user">
+      <span class="sidebar-user-avatar" id="sidebar-avatar">👦</span>
+      <div>
+        <div class="sidebar-user-name" id="sidebar-username">Ayu Solver</div>
+        <div class="sidebar-user-role">Premium Cuber</div>
+      </div>
+    </div>
+    
+    <ul class="sidebar-menu">
+      <li class="active" data-target="dashboard" onclick="goToPage('dashboard')">📊 <span>Dashboard</span></li>
+      <li data-target="solver" onclick="goToPage('solver')">🧩 <span>AI Cube Solver</span></li>
+      <li data-target="learn" onclick="goToPage('learn')">📖 <span>Learning Center</span></li>
+      <li data-target="algorithms" onclick="goToPage('algorithms')">📐 <span>Algorithms Library</span></li>
+      <li data-target="cubes" onclick="goToPage('cubes')">🧊 <span>Cube Library</span></li>
+      <li data-target="timer" onclick="goToPage('timer')">⏱️ <span>Speed Timer</span></li>
+      <li data-target="practice" onclick="goToPage('practice')">⚔️ <span>Practice Arena</span></li>
+      <li data-target="challenges" onclick="goToPage('challenges')">🔥 <span>Daily Challenges</span></li>
+      <li data-target="community" onclick="goToPage('community')">🌍 <span>Community Hub</span></li>
+      <li data-target="profile" onclick="goToPage('profile')">👤 <span>My Profile</span></li>
+      <li data-target="settings" onclick="goToPage('settings')">⚙️ <span>Settings</span></li>
+    </ul>
+    
+    <div style="padding:1.5rem">
+      <button class="btn-secondary" style="width:100%" onclick="goToPage('home')">🚪 Logout</button>
+    </div>
+  </aside>
+  
+  <!-- Main content column -->
+  <main class="main-content">
+    <header class="app-header">
+      <div class="breadcrumbs" id="breadcrumbs">
+        <a href="#/dashboard">App</a> <span>/</span> <span style="color:var(--text-primary)">Dashboard</span>
+      </div>
+      
+      <div class="header-actions">
+        <!-- Search bar -->
+        <div style="position:relative">
+          <input type="text" id="global-search-input" class="global-search-container input" placeholder="Search lessons, algs..." oninput="handleGlobalSearch(this.value)">
+          <div class="search-results-dropdown" id="global-search-results"></div>
+        </div>
+        
+        <!-- Streak -->
+        <div class="stat-badge">🔥 <span id="header-streak">5 days</span></div>
+        
+        <!-- Coins -->
+        <div class="stat-badge">🪙 <span id="header-coins">350</span></div>
+        
+        <!-- Notifications -->
+        <div style="position:relative">
+          <button class="noti-btn" onclick="toggleNotifications()">
+            🔔 <span class="noti-badge" id="noti-badge" style="display:none">0</span>
+          </button>
+          <div class="noti-dropdown" id="noti-dropdown" style="display:none">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem">
+              <span style="font-weight:700">Notifications</span>
+              <button class="small-btn btn-secondary" onclick="clearNotifications()">Clear</button>
+            </div>
+            <ul id="noti-list"></ul>
+          </div>
+        </div>
+        
+        <button class="theme-btn" title="Toggle theme">🌙</button>
+      </div>
+    </header>
+    
+    <div class="app-content-wrapper">
+      <div class="app-page-slot" id="page-dashboard"></div>
+      <div class="app-page-slot" id="page-solver" style="display:none"></div>
+      <div class="app-page-slot" id="page-learn" style="display:none"></div>
+      <div class="app-page-slot" id="page-algorithms" style="display:none"></div>
+      <div class="app-page-slot" id="page-cubes" style="display:none"></div>
+      <div class="app-page-slot" id="page-timer" style="display:none"></div>
+      <div class="app-page-slot" id="page-practice" style="display:none"></div>
+      <div class="app-page-slot" id="page-challenges" style="display:none"></div>
+      <div class="app-page-slot" id="page-community" style="display:none"></div>
+      <div class="app-page-slot" id="page-profile" style="display:none"></div>
+      <div class="app-page-slot" id="page-settings" style="display:none"></div>
+    </div>
+  </main>
+</div>
+
+<!-- ══════════════════════ SCRIPTS ══════════════════════ -->
+<script src="app.js"></script>
+<script>
+// ── Cursor ──
+const cursor = document.getElementById('cursor');
+const cursorRing = document.getElementById('cursor-ring');
+let mx = 0, my = 0, rx = 0, ry = 0;
+document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+function animCursor() {
+  rx += (mx - rx) * 0.15; ry += (my - ry) * 0.15;
+  cursor.style.left = mx + 'px'; cursor.style.top = my + 'px';
+  cursorRing.style.left = rx + 'px'; cursorRing.style.top = ry + 'px';
+  requestAnimationFrame(animCursor);
+}
+animCursor();
+document.querySelectorAll('button, a, .feature-card, .cube-card, .testi-card').forEach(el => {
+  el.addEventListener('mouseenter', () => { cursor.style.width = '20px'; cursor.style.height = '20px'; });
+  el.addEventListener('mouseleave', () => { cursor.style.width = '12px'; cursor.style.height = '12px'; });
+});
+
+// ── Navbar scroll ──
+const nav = document.getElementById('navbar');
+window.addEventListener('scroll', () => {
+  nav.classList.toggle('scrolled', window.scrollY > 60);
+});
+
+// ── Mobile menu ──
+function toggleMobile() {
+  document.getElementById('mobileMenu').classList.toggle('open');
+  document.getElementById('hamburger').classList.toggle('open');
+}
+function closeMobile() {
+  document.getElementById('mobileMenu').classList.remove('open');
+  document.getElementById('hamburger').classList.remove('open');
+}
+
+// ── Particle Background ──
+(function() {
+  const canvas = document.getElementById('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles = [], cubelets = [];
+  function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+  resize(); window.addEventListener('resize', resize);
+
+  const CUBE_COLORS = ['#3b82f6','#22c55e','#ef4444','#eab308','#f97316','#ffffff'];
+  for (let i = 0; i < 60; i++) {
+    particles.push({ x: Math.random()*9999, y: Math.random()*9999, vx: (Math.random()-.5)*.3, vy: (Math.random()-.5)*.3, r: Math.random()*2+.5, a: Math.random()*.5+.1, c: CUBE_COLORS[Math.floor(Math.random()*CUBE_COLORS.length)] });
+  }
+  for (let i = 0; i < 12; i++) {
+    cubelets.push({ x: Math.random()*9999, y: Math.random()*9999, vx: (Math.random()-.5)*.15, vy: (Math.random()-.5)*.15, rot: Math.random()*360, vr: (Math.random()-.5)*.3, size: Math.random()*14+6, a: Math.random()*.12+.04 });
+  }
+
+  let mouseX = W/2, mouseY = H/2;
+  window.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+
+  function draw() {
+    ctx.clearRect(0,0,W,H);
+    // particles
+    particles.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+      if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fillStyle = p.c + Math.round(p.a*255).toString(16).padStart(2,'0');
+      ctx.fill();
+    });
+    // cubelets
+    cubelets.forEach(c => {
+      c.x += c.vx; c.y += c.vy; c.rot += c.vr;
+      if (c.x < 0) c.x = W; if (c.x > W) c.x = 0;
+      if (c.y < 0) c.y = H; if (c.y > H) c.y = 0;
+      ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.rot * Math.PI/180);
+      ctx.strokeStyle = `rgba(100,150,255,${c.a})`; ctx.lineWidth = .8;
+      ctx.strokeRect(-c.size/2, -c.size/2, c.size, c.size);
+      ctx.restore();
+    });
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+// ── Interactive 3D Rubik's Cube (Canvas) ──
+let heroCube;
+let heroCubeRenderer;
+(function() {
+  const canvas = document.getElementById('cube-canvas');
+  if (canvas) {
+    canvas.width = 420; canvas.height = 420;
+    heroCube = new RubiksCube();
+    heroCubeRenderer = new CubeRenderer(canvas, heroCube, 3, true);
+    activeRenderers.push(heroCubeRenderer);
+  }
+})();
+
+// ── Scroll Animations ──
+const observerOpts = { threshold: 0.15 };
+const revealObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); }});
+}, observerOpts);
+document.querySelectorAll('.reveal, .reveal-l, .reveal-r').forEach(el => revealObs.observe(el));
+
+// timeline steps
+const tlObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      document.querySelectorAll('.tl-step').forEach((s,i) => {
+        setTimeout(() => s.classList.add('visible'), i * 120);
+      });
+      tlObs.disconnect();
+    }
+  });
+}, { threshold: 0.2 });
+const tl = document.querySelector('.timeline');
+if (tl) tlObs.observe(tl);
+
+// ── Animated Counters ──
+function animateCounter(el, target, duration=2000) {
+  const start = performance.now();
+  const fmt = n => n >= 1000000 ? (n/1000000).toFixed(1)+'M+' : n >= 1000 ? Math.round(n/1000)+'K+' : n+'%';
+  const isPercent = el.dataset.target <= 100 && el.closest('.hero-stats');
+  function update(now) {
+    const p = Math.min((now-start)/duration, 1);
+    const ease = 1 - Math.pow(1-p, 3);
+    const val = Math.round(ease * target);
+    el.textContent = target >= 1000 ? fmt(val) : val + (isPercent ? '%' : '');
+    if (p < 1) requestAnimationFrame(update);
+    else el.textContent = target >= 1000 ? fmt(target) : target + (isPercent ? '%' : '');
+  }
+  requestAnimationFrame(update);
+}
+
+const counterObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const target = parseInt(e.target.dataset.target);
+      animateCounter(e.target, target);
+      counterObs.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.5 });
+document.querySelectorAll('[data-target]').forEach(el => counterObs.observe(el));
+
+// ── Testimonials ──
+const testimonials = [
+  { name:'Arjun Mehra', role:'Speedcuber · Mumbai', emoji:'🧑‍💻', stars:5, text:"Went from 3 minutes to under 30 seconds in just 6 weeks. The F2L trainer is absolutely incredible — nothing else like it." },
+  { name:'Sarah Chen', role:'WCA Competitor', emoji:'👩', stars:5, text:"The AI scanner is witchcraft. I just held my cube up and it immediately generated the perfect solution. Blew my mind." },
+  { name:'Luca Romano', role:'Math Teacher · Rome', emoji:'👨‍🏫', stars:5, text:"I use Ayu to teach my students. The 3D interactive tutorials explain algorithms so visually — they get it immediately." },
+  { name:'Priya Singh', role:'Beginner · Bangalore', emoji:'👧', stars:5, text:"I'd failed to solve a 3x3 for two years. Ayu's step-by-step guide had me solving it completely on my own in four days." },
+  { name:'Marcus Weber', role:'Sub-20 Solver', emoji:'🧑', stars:5, text:"The algorithm trainer with spaced repetition is a game-changer. Drilled all 57 OLLs in two weeks. PB went from 22 to 18 seconds." },
+  { name:'Yuki Tanaka', role:'YouTube Cuber', emoji:'🎥', stars:5, text:"Every feature is polished to perfection. The daily challenges keep me coming back every single day. This is the best cubing app." },
+  { name:'Fatima Al-Rashid', role:'Student · Dubai', emoji:'📚', stars:5, text:"The learning path is so well structured. I never felt lost or overwhelmed. Ayu breaks everything down perfectly." },
+  { name:'Diego Morales', role:'Cube Collector', emoji:'🏆', stars:5, text:"Coverage of 12+ puzzle types is unreal. Finally a platform that doesn't abandon me after the 3x3. Megaminx guide is elite." },
+];
+
+const track = document.getElementById('testiTrack');
+const doubled = [...testimonials, ...testimonials];
+doubled.forEach(t => {
+  const card = document.createElement('div');
+  card.className = 'testi-card';
+  card.innerHTML = `
+    <div class="testi-top">
+      <div class="testi-avatar">${t.emoji}</div>
+      <div><div class="testi-name">${t.name}</div><div class="testi-role">${t.role}</div></div>
+    </div>
+    <div class="testi-stars">${'★'.repeat(t.stars)}</div>
+    <div class="testi-text">${t.text}</div>
+  `;
+  track.appendChild(card);
+});
+</script>
+<!-- Login Modal -->
+<div id="auth-modal" class="modal-overlay" style="display:none">
+  <div class="modal-card glass-card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem">
+      <h3 id="auth-title">Login to Ayu Solver</h3>
+      <button class="small-btn btn-secondary" onclick="hideAuthModal()">✕</button>
+    </div>
+    
+    <form id="auth-form" onsubmit="handleAuthSubmit(event)" style="display:flex; flex-direction:column; gap:1.25rem">
+      <div id="auth-username-field" style="display:none">
+        <span style="font-size:0.75rem; color:var(--text-secondary)">Username</span>
+        <input type="text" id="auth-username" class="global-search-container input" style="width:100%" placeholder="Enter username">
+      </div>
+      <div>
+        <span style="font-size:0.75rem; color:var(--text-secondary)">Email Address</span>
+        <input type="email" id="auth-email" required class="global-search-container input" style="width:100%" placeholder="name@email.com">
+      </div>
+      <div>
+        <span style="font-size:0.75rem; color:var(--text-secondary)">Password</span>
+        <input type="password" id="auth-password" required class="global-search-container input" style="width:100%" placeholder="••••••••">
+      </div>
+      
+      <button type="submit" class="btn-primary" style="width:100%; justify-content:center" id="auth-submit-btn">Login</button>
+    </form>
+    
+    <div style="text-align:center; margin-top:1.25rem; font-size:0.8rem">
+      <span id="auth-switch-text">Don't have an account?</span> 
+      <a href="#" onclick="toggleAuthMode(event)" id="auth-switch-link" style="color:var(--accent-cyan); text-decoration:underline">Sign Up</a>
+    </div>
+    <div style="text-align:center; margin-top:0.75rem; font-size:0.75rem">
+      <a href="#" onclick="loginAsGuest(event)" style="color:var(--text-muted); text-decoration:none; cursor:none">Continue as Guest (Offline)</a>
+    </div>
+  </div>
+</div>
+
+<!-- Floating AI Coach Assistant Drawer -->
+<div class="ai-coach-trigger" onclick="toggleCoachDrawer()">
+  🤖 <span style="font-size:0.7rem; font-weight:600">Ayu AI</span>
+</div>
+
+<div class="ai-coach-drawer" id="ai-coach-drawer" style="display:none">
+  <div class="drawer-header">
+    <div style="display:flex;align-items:center;gap:0.5rem">
+      <span>🤖</span>
+      <div>
+        <div style="font-weight:700;font-size:0.85rem">Ayu Speedcuber Coach</div>
+        <div style="font-size:0.65rem;color:var(--accent-cyan)">Gemini 1.5 Active</div>
+      </div>
+    </div>
+    <button onclick="toggleCoachDrawer()" style="background:none;border:none;color:white;cursor:none;font-size:1.1rem">✕</button>
+  </div>
+  
+  <div class="drawer-messages" id="coach-messages">
+    <div class="msg ai">
+      Hey there! I am your AI Coach. Ask me how to improve your solve time, tips on OLL/PLL algorithms, or details on standard cross alignment.
+    </div>
+  </div>
+  
+  <div class="drawer-input-wrap">
+    <input type="text" id="coach-input" placeholder="Ask Ayu AI..." onkeydown="if(event.key==='Enter') sendCoachQuestion()">
+    <button onclick="sendCoachQuestion()">➔</button>
+  </div>
+</div>
+
+<script>
+// PWA Service Worker Registration
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW registration failed:', err));
+  });
+}
+</script>
+</body>
+</html>
