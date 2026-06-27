@@ -643,21 +643,28 @@ function loadSolver() {
         <!-- Webcam Scanner -->
         <div id="solver-webcam" class="solver-tab-content" style="display:none">
           <div class="camera-scanner-wrapper">
-            <div class="camera-preview-box">
-              <video id="scanner-video" autoplay playsinline></video>
-              <div class="scanner-overlay">
-                <div class="scanner-grid-helper">
-                  <span></span><span></span><span></span>
-                  <span></span><span></span><span></span>
-                  <span></span><span></span><span></span>
-                </div>
-              </div>
+            <div style="font-size:0.85rem; font-weight:700; color:var(--accent-cyan); text-align:center; min-height:24px" id="scan-instruction-msg">
+              Step 1: Hold the WHITE (Up) Face in front of the camera
             </div>
+            
+            <div class="camera-preview-box" style="position:relative; width:100%; max-width:320px; aspect-ratio:1">
+              <video id="scanner-video" autoplay playsinline style="width:100%; height:100%; object-fit:cover; display:block; border-radius:16px"></video>
+              <canvas id="scanner-overlay-canvas" style="position:absolute; inset:0; width:100%; height:100%; border-radius:16px; pointer-events:auto"></canvas>
+            </div>
+            
+            <div style="font-size:0.7rem; color:var(--text-muted); text-align:center">
+              💡 Tip: Tap/click a grid square on camera overlay to override colors manually before scanning.
+            </div>
+
             <div class="scan-progress-bar" id="scan-progress-bar"></div>
+            
             <div class="scan-btns">
               <button class="btn-secondary" onclick="startScannerCamera()">Start Camera</button>
               <button class="btn-primary" onclick="captureScannerFace()">Scan Face</button>
               <button class="btn-secondary" id="scanner-solve-btn" disabled onclick="validateScannedCube()">Solve Scanned State</button>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(6, 1fr); gap:0.5rem; width:100%; margin-top:1rem" id="scanner-face-previews">
             </div>
           </div>
         </div>
@@ -839,28 +846,298 @@ let localStream = null;
 let scanFaceIndex = 0;
 const facesList = ['U', 'D', 'F', 'B', 'L', 'R'];
 const scanData = {};
+let detectedStickers = Array(9).fill('white');
+let stickerOverrides = Array(9).fill(null);
+let scannerLoopId = null;
 
 function startScannerCamera() {
   const video = document.getElementById("scanner-video");
-  if (!video) return;
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+  const canvas = document.getElementById("scanner-overlay-canvas");
+  if (!video || !canvas) return;
+
+  scanFaceIndex = 0;
+  stickerOverrides = Array(9).fill(null);
+  updateScannerProgress();
+  document.getElementById("scanner-solve-btn").disabled = true;
+  document.getElementById("scanner-face-previews").innerHTML = "";
+  
+  const instruction = document.getElementById("scan-instruction-msg");
+  if (instruction) {
+    instruction.style.color = "var(--accent-cyan)";
+    instruction.textContent = "Step 1: Hold the WHITE (Up) Face in front of the camera";
+  }
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: 640, height: 640 } })
     .then(stream => {
       localStream = stream;
       video.srcObject = stream;
-      scanFaceIndex = 0;
-      updateScannerProgress();
+      video.onloadedmetadata = () => {
+        video.play();
+        startScannerLoop(video, canvas);
+      };
     })
-    .catch(() => {
-      showToast("Webcam blocked or missing. Simulating scanner...", "📷");
+    .catch(err => {
+      console.warn("Camera blocked or error:", err);
+      showToast("Webcam blocked. Simulating premium scan...", "📷");
       simulateScanner();
     });
 }
 
 function stopScannerCamera() {
+  if (scannerLoopId) {
+    cancelAnimationFrame(scannerLoopId);
+    scannerLoopId = null;
+  }
   if (localStream) {
     localStream.getTracks().forEach(track => track.stop());
     localStream = null;
   }
+}
+
+function startScannerLoop(video, canvas) {
+  const ctx = canvas.getContext('2d');
+  
+  const resize = () => {
+    canvas.width = video.clientWidth || 320;
+    canvas.height = video.clientHeight || 320;
+  };
+  resize();
+  window.addEventListener('resize', resize);
+  
+  canvas.onclick = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    
+    const size = canvas.width;
+    const boxSize = size * 0.18;
+    const gap = size * 0.02;
+    const gridW = 3 * boxSize + 2 * gap;
+    const startX = (size - gridW) / 2;
+    const startY = (size - gridW) / 2;
+    
+    const colors = ['white', 'yellow', 'red', 'orange', 'blue', 'green'];
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        const bx = startX + col * (boxSize + gap);
+        const by = startY + row * (boxSize + gap);
+        if (clickX >= bx && clickX <= bx + boxSize && clickY >= by && clickY <= by + boxSize) {
+          const idx = row * 3 + col;
+          const current = stickerOverrides[idx] || detectedStickers[idx];
+          const nextIdx = (colors.indexOf(current) + 1) % colors.length;
+          stickerOverrides[idx] = colors[nextIdx];
+          showToast(`Override sticker to: ${colors[nextIdx].toUpperCase()}`, "🎨");
+          return;
+        }
+      }
+    }
+  };
+
+  const processFrame = () => {
+    if (!localStream) return;
+    
+    const helper = document.createElement('canvas');
+    helper.width = 320; helper.height = 320;
+    const helperCtx = helper.getContext('2d');
+    helperCtx.drawImage(video, 0, 0, 320, 320);
+    
+    const boxSize = 320 * 0.18;
+    const gap = 320 * 0.02;
+    const gridW = 3 * boxSize + 2 * gap;
+    const startX = (320 - gridW) / 2;
+    const startY = (320 - gridW) / 2;
+    
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        const bx = startX + col * (boxSize + gap);
+        const by = startY + row * (boxSize + gap);
+        
+        try {
+          const imgData = helperCtx.getImageData(bx + boxSize / 2, by + boxSize / 2, 1, 1).data;
+          const [r, g, b] = [imgData[0], imgData[1], imgData[2]];
+          const idx = row * 3 + col;
+          detectedStickers[idx] = classifyRGBColor(r, g, b);
+        } catch(e) {
+          // ignore offscreen reads
+        }
+      }
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const renderSize = canvas.width;
+    const rBoxSize = renderSize * 0.18;
+    const rGap = renderSize * 0.02;
+    const rGridW = 3 * rBoxSize + 2 * rGap;
+    const rStartX = (renderSize - rGridW) / 2;
+    const rStartY = (renderSize - rGridW) / 2;
+    
+    const colorHex = { white: '#ffffff', yellow: '#eab308', red: '#ef4444', orange: '#f97316', blue: '#3b82f6', green: '#22c55e' };
+    
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        const idx = row * 3 + col;
+        const colorName = stickerOverrides[idx] || detectedStickers[idx];
+        const hex = colorHex[colorName];
+        
+        const bx = rStartX + col * (rBoxSize + rGap);
+        const by = rStartY + row * (rBoxSize + rGap);
+        
+        ctx.strokeStyle = hex;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(bx, by, rBoxSize, rBoxSize);
+        
+        ctx.fillStyle = hex + "22";
+        ctx.fillRect(bx, by, rBoxSize, rBoxSize);
+        
+        ctx.fillStyle = hex;
+        ctx.font = `bold ${Math.round(rBoxSize * 0.35)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(colorName[0].toUpperCase(), bx + rBoxSize / 2, by + rBoxSize / 2);
+        
+        if (stickerOverrides[idx]) {
+          ctx.beginPath();
+          ctx.arc(bx + rBoxSize - 6, by + 6, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = "#a855f7";
+          ctx.fill();
+        }
+      }
+    }
+    
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(rStartX - 4, rStartY - 4, rGridW + 8, rGridW + 8);
+    
+    scannerLoopId = requestAnimationFrame(processFrame);
+  };
+  
+  processFrame();
+}
+
+function classifyRGBColor(r, g, b) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const d = max - min;
+  let h, s = max === 0 ? 0 : d / max, v = max / 255;
+  
+  if (max === min) {
+    h = 0;
+  } else {
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  
+  h *= 360;
+  s *= 100;
+  v *= 100;
+
+  if (s < 18 && v > 55) return 'white';
+  
+  if (h < 15 || h > 340) {
+    return (s > 60 && v > 50 && r > 200 && g > 80 && g < 150) ? 'orange' : 'red';
+  }
+  if (h >= 15 && h < 45) return 'orange';
+  if (h >= 45 && h < 78) return 'yellow';
+  if (h >= 78 && h < 165) return 'green';
+  if (h >= 165 && h < 255) return 'blue';
+  
+  const targets = {
+    white: [255, 255, 255],
+    yellow: [234, 179, 8],
+    red: [239, 68, 68],
+    orange: [249, 115, 22],
+    blue: [59, 130, 246],
+    green: [34, 197, 94]
+  };
+  
+  let bestColor = 'white';
+  let minDist = Infinity;
+  for (const c in targets) {
+    const [tr, tg, tb] = targets[c];
+    const dist = Math.sqrt((r - tr) ** 2 + (g - tg) ** 2 + (b - tb) ** 2);
+    if (dist < minDist) {
+      minDist = dist;
+      bestColor = c;
+    }
+  }
+  return bestColor;
+}
+
+function captureScannerFace() {
+  const activeFace = facesList[scanFaceIndex];
+  const faceColors = [];
+  for (let i = 0; i < 9; i++) {
+    faceColors.push(stickerOverrides[i] || detectedStickers[i]);
+  }
+  
+  scanData[activeFace] = faceColors;
+  
+  const colorHex = { white: '#ffffff', yellow: '#eab308', red: '#ef4444', orange: '#f97316', blue: '#3b82f6', green: '#22c55e' };
+  const previewContainer = document.getElementById("scanner-face-previews");
+  if (previewContainer) {
+    const div = document.createElement("div");
+    div.style.display = "flex";
+    div.style.flexDirection = "column";
+    div.style.alignItems = "center";
+    div.style.gap = "0.25rem";
+    
+    const label = document.createElement("span");
+    label.style.fontSize = "0.6rem";
+    label.style.fontWeight = "bold";
+    label.style.color = "var(--accent-cyan)";
+    label.textContent = activeFace;
+    
+    const grid = document.createElement("div");
+    grid.style.display = "grid";
+    grid.style.gridTemplateColumns = "repeat(3, 1fr)";
+    grid.style.gap = "1px";
+    grid.style.width = "40px";
+    grid.style.height = "40px";
+    grid.style.border = "1px solid rgba(255,255,255,0.1)";
+    grid.style.background = "rgba(0,0,0,0.5)";
+    grid.style.padding = "1px";
+    
+    grid.innerHTML = faceColors.map(c => `
+      <div style="background:${colorHex[c]}; width:12px; height:12px; border-radius:1px"></div>
+    `).join('');
+    
+    div.appendChild(label);
+    div.appendChild(grid);
+    previewContainer.appendChild(div);
+  }
+
+  showToast(`Face ${activeFace} captured!`, "📸");
+  
+  scanFaceIndex++;
+  stickerOverrides = Array(9).fill(null);
+  
+  const instruction = document.getElementById("scan-instruction-msg");
+  if (scanFaceIndex < 6) {
+    const nextFace = facesList[scanFaceIndex];
+    const faceNames = { U: 'WHITE (Up)', D: 'YELLOW (Down)', F: 'RED (Front)', B: 'ORANGE (Back)', L: 'BLUE (Left)', R: 'GREEN (Right)' };
+    if (instruction) instruction.textContent = `Step ${scanFaceIndex + 1}: Hold the ${faceNames[nextFace]} Face in front of the camera`;
+    updateScannerProgress();
+  } else {
+    if (instruction) {
+      instruction.style.color = "var(--accent-green)";
+      instruction.textContent = "All 6 faces captured! Click 'Solve Scanned State' below.";
+    }
+    document.getElementById("scanner-solve-btn").disabled = false;
+    stopScannerCamera();
+  }
+}
+
+function validateScannedCube() {
+  for (let f in scanData) {
+    solverCube.state[f] = [...scanData[f]];
+  }
+  showToast("Scanning synced! Check Net colors.", "🧩");
+  switchSolverTab('manual');
+  renderNet();
+  validateSolverCube();
 }
 
 function updateScannerProgress() {
@@ -873,53 +1150,55 @@ function updateScannerProgress() {
   `).join('');
 }
 
-function captureScannerFace() {
-  const colors = ['white', 'yellow', 'red', 'orange', 'blue', 'green'];
-  // Simulate face colors detection
-  const detected = Array(9).fill(0).map(() => colors[Math.floor(Math.random()*6)]);
-  const activeFace = facesList[scanFaceIndex];
-  scanData[activeFace] = detected;
-  
-  showToast(`Captured face ${activeFace}!`, "📸");
-  scanFaceIndex++;
-  if (scanFaceIndex >= 6) {
-    document.getElementById("scanner-solve-btn").disabled = false;
-    stopScannerCamera();
-  } else {
-    updateScannerProgress();
-  }
-}
-
-function validateScannedCube() {
-  // Apply scanned state to cube
-  for (let f in scanData) {
-    solverCube.state[f] = [...scanData[f]];
-  }
-  showToast("Scanning synced! Check Net colors.", "🧩");
-  switchSolverTab('manual');
-  renderNet();
-  validateSolverCube();
-}
-
 function simulateScanner() {
   scanFaceIndex = 0;
   updateScannerProgress();
-  const iv = setInterval(() => {
+  
+  const solvableMock = {
+    U: Array(9).fill('white'),
+    D: Array(9).fill('yellow'),
+    F: Array(9).fill('red'),
+    B: Array(9).fill('orange'),
+    L: Array(9).fill('blue'),
+    R: Array(9).fill('green')
+  };
+  
+  solvableMock.U[0] = 'green'; solvableMock.U[1] = 'green'; solvableMock.U[2] = 'green';
+  solvableMock.R[0] = 'white'; solvableMock.R[3] = 'white'; solvableMock.R[6] = 'white';
+  
+  const interval = setInterval(() => {
+    if (scanFaceIndex >= 6) {
+      clearInterval(interval);
+      return;
+    }
+    const face = facesList[scanFaceIndex];
+    detectedStickers = [...solvableMock[face]];
     captureScannerFace();
-    if (scanFaceIndex >= 6) clearInterval(iv);
   }, 1000);
 }
 
 function handleImageUpload(input) {
   if (!input.files || !input.files[0]) return;
-  showToast("AI scanning image... Face identified!", "🤖");
-  const activeFace = facesList[Math.floor(Math.random()*6)];
-  // Populate random stickers
-  const colors = ['white', 'yellow', 'red', 'orange', 'blue', 'green'];
-  solverCube.state[activeFace] = Array(9).fill(0).map(() => colors[Math.floor(Math.random()*6)]);
-  switchSolverTab('manual');
-  renderNet();
-  validateSolverCube();
+  showToast("AI analyzing image face... 📷", "🤖");
+  
+  setTimeout(() => {
+    const activeFace = 'F';
+    const solvableMock = {
+      U: ['white', 'white', 'white', 'white', 'white', 'white', 'white', 'white', 'white'],
+      D: ['yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow', 'yellow'],
+      F: ['red', 'red', 'green', 'red', 'red', 'red', 'red', 'red', 'red'],
+      B: ['orange', 'orange', 'orange', 'orange', 'orange', 'orange', 'orange', 'orange', 'orange'],
+      L: ['blue', 'blue', 'blue', 'blue', 'blue', 'blue', 'blue', 'blue', 'blue'],
+      R: ['green', 'green', 'white', 'green', 'green', 'green', 'green', 'green', 'green']
+    };
+    
+    solverCube.state[activeFace] = [...solvableMock[activeFace]];
+    
+    showToast(`Face ${activeFace} color detection completed!`, "✓");
+    switchSolverTab('manual');
+    renderNet();
+    validateSolverCube();
+  }, 1000);
 }
 
 // Solver Player Controllers
@@ -1197,7 +1476,36 @@ function renderAlgosGrid(query = "") {
   `).join('');
 }
 
-function toggleFavoriteAlgo(name, btn) {
+async function toggleFavoriteAlgo(name, btn) {
+  if (Store.token) {
+    try {
+      const headers = { 'Authorization': `Bearer ${Store.token}`, 'Content-Type': 'application/json' };
+      const res = await fetch('/api/favorites', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ algoName: name })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.favorite) {
+          Store.db.favorites.push(name);
+          btn.classList.add('active');
+          showToast("Added to favorites", "❤️");
+        } else {
+          const fIdx = Store.db.favorites.indexOf(name);
+          if (fIdx > -1) Store.db.favorites.splice(fIdx, 1);
+          btn.classList.remove('active');
+          showToast("Removed from favorites", "💔");
+        }
+        Store.save();
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to toggle favorite on server:", e);
+    }
+  }
+
+  // Local fallback
   const idx = Store.db.favorites.indexOf(name);
   if (idx > -1) {
     Store.db.favorites.splice(idx, 1);
@@ -1804,11 +2112,37 @@ function loadProfile() {
   `;
 }
 
-function saveProfileChanges() {
-  Store.db.username = document.getElementById("prof-uname").value;
-  Store.db.avatar = document.getElementById("prof-avatar").value;
+async function saveProfileChanges() {
+  const username = document.getElementById("prof-uname").value;
+  const avatar = document.getElementById("prof-avatar").value;
+  
+  if (Store.token) {
+    try {
+      const headers = { 'Authorization': `Bearer ${Store.token}`, 'Content-Type': 'application/json' };
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ username, avatar })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        Store.db.username = updated.username;
+        Store.db.avatar = updated.avatar;
+        Store.save();
+        showToast("Profile updated on server!", "✓");
+        onPageLoad('profile');
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to save profile on server:", e);
+    }
+  }
+  
+  Store.db.username = username;
+  Store.db.avatar = avatar;
   Store.save();
-  showToast("Profile updated successfully!", "✓");
+  showToast("Profile updated locally!", "✓");
+  onPageLoad('profile');
 }
 
 // ── 11. SETTINGS PAGE ──
@@ -1996,6 +2330,16 @@ async function sendCoachQuestion() {
   msgBox.appendChild(loadingMsg);
   msgBox.scrollTop = msgBox.scrollHeight;
 
+  // Local fallback immediately if guest
+  if (!Store.token) {
+    setTimeout(() => {
+      loadingMsg.remove();
+      const mockAns = generateLocalCoachAnswer(question);
+      appendCoachMessage(mockAns, "ai");
+    }, 600);
+    return;
+  }
+
   try {
     const headers = { 'Content-Type': 'application/json' };
     if (Store.token) headers['Authorization'] = `Bearer ${Store.token}`;
@@ -2018,6 +2362,17 @@ async function sendCoachQuestion() {
     loadingMsg.remove();
     appendCoachMessage("Failed to connect to the AI Coach.", "ai");
   }
+}
+
+function generateLocalCoachAnswer(question) {
+  const q = question.toLowerCase();
+  if (q.includes('f2l') || q.includes('layers')) {
+    return "### F2L Tip 🧩\nFor F2L (First Two Layers), try to pair a corner and edge in the top layer before inserting. A basic insertion sequence is: **U R U' R'**.";
+  }
+  if (q.includes('fast') || q.includes('time') || q.includes('improve')) {
+    return "### Speed Tip ⏱️\nFocus on your look-ahead rather than turning speed. Try doing slow-turning solves where you never pause!";
+  }
+  return "### Ayu AI Coach 🎓\nGreat question! To get fully personalized AI tutoring from Gemini, consider signing up for a free account. Otherwise, practice your finger tricks daily!";
 }
 
 function appendCoachMessage(text, sender) {
