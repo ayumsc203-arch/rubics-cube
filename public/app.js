@@ -1578,10 +1578,10 @@ function loadCubes() {
     <h2 class="page-title">Cube Library</h2>
     
     <div class="cubes-nav-bar">
-      <button class="cube-nav-btn" onclick="switchCubeType('2x2')">2×2 Pocket</button>
-      <button class="cube-nav-btn active" onclick="switchCubeType('3x3')">3×3 Classic</button>
-      <button class="cube-nav-btn" onclick="switchCubeType('4x4')">4×4 Revenge</button>
-      <button class="cube-nav-btn" onclick="switchCubeType('5x5')">5×5 Professor</button>
+      <button class="cube-nav-btn" data-type="2x2" onclick="switchCubeType('2x2')">2×2 Pocket</button>
+      <button class="cube-nav-btn active" data-type="3x3" onclick="switchCubeType('3x3')">3×3 Classic</button>
+      <button class="cube-nav-btn" data-type="4x4" onclick="switchCubeType('4x4')">4×4 Revenge</button>
+      <button class="cube-nav-btn" data-type="5x5" onclick="switchCubeType('5x5')">5×5 Professor</button>
     </div>
     
     <div class="cube-details-grid glass-card">
@@ -1613,7 +1613,9 @@ function loadCubes() {
 
 function switchCubeType(type) {
   activeCubeType = type;
-  document.querySelectorAll('.cube-nav-btn').forEach(btn => btn.classList.toggle('active', btn.textContent.includes(type)));
+  document.querySelectorAll('.cube-nav-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-type') === type);
+  });
   
   const data = cubesData[type];
   document.getElementById("cube-t-name").textContent = data.name;
