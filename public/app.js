@@ -432,6 +432,13 @@ function updateBreadcrumbs(page) {
 function handleRouting() {
   const hash = window.location.hash || '#/home';
   const page = hash.replace('#/', '');
+  
+  if (page !== 'solver') {
+    try {
+      stopScannerCamera();
+    } catch(e) {}
+  }
+
   const appPages = ['dashboard', 'solver', 'learn', 'algorithms', 'cubes', 'timer', 'practice', 'challenges', 'community', 'profile', 'settings'];
 
   if (appPages.includes(page)) {
@@ -939,7 +946,12 @@ function startScannerLoop(video, canvas) {
     const helper = document.createElement('canvas');
     helper.width = 320; helper.height = 320;
     const helperCtx = helper.getContext('2d');
-    helperCtx.drawImage(video, 0, 0, 320, 320);
+    try {
+      helperCtx.drawImage(video, 0, 0, 320, 320);
+    } catch(err) {
+      scannerLoopId = requestAnimationFrame(processFrame);
+      return;
+    }
     
     const boxSize = 320 * 0.18;
     const gap = 320 * 0.02;
