@@ -1618,6 +1618,8 @@ function switchCubeType(type) {
   });
   
   const data = cubesData[type];
+  if (!data) return;
+  
   document.getElementById("cube-t-name").textContent = data.name;
   document.getElementById("cube-t-method").textContent = `Primary Method: ${data.method}`;
   document.getElementById("cube-t-desc").textContent = data.desc;
@@ -1627,9 +1629,20 @@ function switchCubeType(type) {
     <span class="diff-dot ${i < data.diff ? 'active' : ''}" style="${i < data.diff ? '--card-color:var(--accent-cyan)' : ''}"></span>
   `).join('');
 
-  // Re-bind renderer with custom grid size!
+  // Defensive initialization if page refreshed or slot loaded out-of-order
+  if (!cubesCube) cubesCube = new RubiksCube();
+  if (!cubesRenderer) {
+    const canvas = document.getElementById("cubes-canvas");
+    if (canvas) {
+      cubesRenderer = new CubeRenderer(canvas, cubesCube, 3, true);
+      setActiveRenderer(cubesRenderer);
+    }
+  }
+
   const sizeMap = { "2x2": 2, "3x3": 3, "4x4": 4, "5x5": 5 };
-  cubesRenderer.N = sizeMap[type];
+  if (cubesRenderer) {
+    cubesRenderer.N = sizeMap[type] || 3;
+  }
   cubesCube.reset();
   showToast(`Rendering ${data.name}`, "🧊");
 }

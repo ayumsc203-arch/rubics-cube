@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ayu-cube-v1';
+const CACHE_NAME = 'ayu-cube-v2';
 const ASSETS = [
   '/',
   '/index.html',
@@ -29,7 +29,12 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Only cache GET requests (exclude api POSTs like solve-cube and auth)
+  // Developer bypass: Do not cache localhost assets
+  if (e.request.url.includes('localhost') || e.request.url.includes('127.0.0.1')) {
+    e.respondWith(fetch(e.request));
+    return;
+  }
+
   if (e.request.method !== 'GET' || e.request.url.includes('/api/')) {
     return;
   }
@@ -46,7 +51,6 @@ self.addEventListener('fetch', (e) => {
         });
       });
     }).catch(() => {
-      // Return cached index.html for fallbacks
       return caches.match('/index.html');
     })
   );
